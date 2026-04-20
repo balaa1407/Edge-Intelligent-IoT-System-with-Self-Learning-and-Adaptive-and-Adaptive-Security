@@ -32,7 +32,7 @@ import paho.mqtt.client as mqtt
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 CONFIG = {
     "mqtt": {
-        "server":      "test.mosquitto.org",
+        "server":      "test.mosquitto.org",  # PUBLIC broker
         "port":        1883,
         "client_id":   "edge-bridge-01",
         "base_topic":  "edgeiot/#",
@@ -56,14 +56,14 @@ CONFIG = {
         "file":         "log.json",
         "max_bytes":    1_000_000,   # 1 MB
         "backup_count": 3,
-        "interval":     3,           # seconds between log writes
+        "interval":     1,           # seconds between log writes
     },
 }
 # ── END CONFIG ────────────────────────────────────────────────────────────────
 
 # ── LOGGING SETUP ─────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Set to DEBUG to see all messages
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -188,20 +188,22 @@ def score_risk(device: DeviceState) -> dict:
 
 
 # ── MQTT CALLBACKS ────────────────────────────────────────────────────────────
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, connect_flags, reason_code, properties):
     rc_map = {0:"OK",1:"Bad protocol",2:"ID rejected",3:"Server unavailable",
               4:"Bad credentials",5:"Not authorised"}
-    if rc == 0:
-        log.info(f"MQTT connected → {CONFIG['mqtt']['server']}")
+    if reason_code == 0:
+        log.info(f"✓ MQTT connected → {CONFIG['mqtt']['server']}")
         client.subscribe(CONFIG["mqtt"]["base_topic"])
-        log.info(f"Subscribed: {CONFIG['mqtt']['base_topic']}")
+        log.info(f"✓ Subscribed: {CONFIG['mqtt']['base_topic']}")
     else:
-        log.error(f"MQTT connect failed [{rc}]: {rc_map.get(rc, rc)}")
+        log.error(f"✗ MQTT connect failed [{reason_code}]: {rc_map.get(reason_code, reason_code)}")
 
 
-def on_disconnect(client, userdata, rc):
-    if rc != 0:
-        log.warning(f"MQTT disconnected unexpectedly (rc={rc}) — paho will retry")
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+    if reason_code != 0:
+        log.warning(f"⚠ MQTT disconnected (rc={reason_code}) - will attempt to reconnect automatically")
+    else:
+        log.info(f"MQTT disconnected cleanly")
 
 
 def on_message(client, userdata, msg):
@@ -211,12 +213,15 @@ def on_message(client, userdata, msg):
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         log.warning(f"Bad payload on {msg.topic}: {e}")
         return
+    
+    # Debug: Log every message received
+    log.debug(f"📨 Message received on {msg.topic}")
     _message_queue.put((msg.topic, payload))
 
 
 def build_mqtt_client() -> mqtt.Client:
     cfg    = CONFIG["mqtt"]
-    client = mqtt.Client(client_id=cfg["client_id"], clean_session=True)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=cfg["client_id"], clean_session=True)
     client.on_connect    = on_connect
     client.on_disconnect = on_disconnect
     client.on_message    = on_message
@@ -229,12 +234,14 @@ def build_mqtt_client() -> mqtt.Client:
 
 # ── MESSAGE PROCESSOR ─────────────────────────────────────────────────────────
 def process_messages() -> None:
+    message_count = 0
     while not _message_queue.empty():
         try:
             topic, payload = _message_queue.get_nowait()
         except queue.Empty:
             break
 
+        message_count += 1
         parts     = topic.split("/")
         device_id = parts[1] if len(parts) >= 2 else "unknown"
         subtopic  = parts[2] if len(parts) >= 3 else ""
@@ -242,7 +249,7 @@ def process_messages() -> None:
         with _devices_lock:
             if device_id not in _devices:
                 _devices[device_id] = DeviceState(device_id)
-                log.info(f"New device registered: {device_id}")
+                log.info(f"✓ New device: {device_id}")
             device = _devices[device_id]
 
         if subtopic == "status" and payload.get("status") == "OFFLINE":
@@ -253,12 +260,15 @@ def process_messages() -> None:
         if subtopic == "telemetry":
             device.update(payload)
             risk = score_risk(device)
-            log.debug(
+            log.info(
                 f"[{device_id}] "
-                f"temp={payload.get('temperature')}°C  "
-                f"humi={payload.get('humidity')}%  "
-                f"risk={risk['score']}/10  mode={risk['mode']}"
+                f"🌡️ {payload.get('temperature')}°C | "
+                f"💧 {payload.get('humidity')}% | "
+                f"⚠️  risk={risk['score']}/10"
             )
+    
+    if message_count > 0:
+        log.debug(f"📦 Processed {message_count} message(s) from queue")
 
 
 # ── AGGREGATE & LOG ───────────────────────────────────────────────────────────
@@ -267,7 +277,7 @@ def aggregate_and_log() -> None:
         snapshot = {k: v for k, v in _devices.items() if v.online and v.latest}
 
     if not snapshot:
-        log.info("Waiting for device data…")
+        log.warning("⏳ Waiting for device data…")
         return
 
     all_temps = [d.latest["temperature"] for d in snapshot.values() if "temperature" in d.latest]
@@ -309,36 +319,45 @@ def aggregate_and_log() -> None:
 
     write_json_log(record)
     log.info(
-        f"[AGG] temp={avg_temp}°C  humi={avg_humi}%  "
-        f"risk={top_risk}/10  mode={top_mode}  "
-        f"devices={len(snapshot)}"
+        f"[AGG] 🌡️  {avg_temp}°C | 💧 {avg_humi}% | "
+        f"⚠️  {top_risk}/10 | {len(snapshot)} device(s)"
     )
 
 
 # ── ENTRY POINT ───────────────────────────────────────────────────────────────
 def run() -> None:
-    log.info("Edge IoT bridge starting…")
+    log.info("🚀 Edge IoT bridge starting…")
 
     client = build_mqtt_client()
     cfg    = CONFIG["mqtt"]
 
-    try:
-        client.connect(cfg["server"], cfg["port"], cfg["keepalive"])
-    except OSError as e:
-        log.error(f"Initial MQTT connect failed: {e}")
-        raise
+    # Try initial connection with retries
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            log.info(f"Connecting to MQTT (attempt {attempt}/{max_retries})…")
+            client.connect(cfg["server"], cfg["port"], cfg["keepalive"])
+            log.info("✓ MQTT initial connection successful")
+            break
+        except OSError as e:
+            log.warning(f"⚠ Connection attempt {attempt} failed: {e}")
+            if attempt < max_retries:
+                time.sleep(2 ** attempt)  # exponential backoff: 2s, 4s, 8s, 16s
+            else:
+                log.error(f"✗ Failed to connect after {max_retries} attempts")
+                raise
 
     client.loop_start()
 
     def _handle_signal(sig, frame):
-        log.info("Shutdown signal received…")
+        log.info("🛑 Shutdown signal received…")
         _shutdown.set()
 
     signal.signal(signal.SIGINT,  _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
     interval = CONFIG["log"]["interval"]
-    log.info(f"Loop started — publishing every {interval}s")
+    log.info(f"✓ Loop started — updating every {interval}s\n")
 
     try:
         while not _shutdown.is_set():
@@ -346,7 +365,7 @@ def run() -> None:
             aggregate_and_log()
             time.sleep(interval)
     finally:
-        log.info("Stopping MQTT loop…")
+        log.info("🛑 Stopping MQTT loop…")
         client.loop_stop()
         client.disconnect()
         log.info("Bridge stopped.")

@@ -13,13 +13,13 @@ port = 1883
 device_id = "wokwi-dht22"
 base_topic = "edgeiot"
 
-client = mqtt.Client(client_id="test-publisher-varied", clean_session=True)
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="test-publisher-varied", clean_session=True)
 
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
+def on_connect(client, userdata, connect_flags, reason_code, properties):
+    if reason_code == 0:
         print(f"✓ Connected to {broker}:{port}\n")
     else:
-        print(f"✗ Connection failed: {rc}")
+        print(f"✗ Connection failed: {reason_code}")
 
 client.on_connect = on_connect
 

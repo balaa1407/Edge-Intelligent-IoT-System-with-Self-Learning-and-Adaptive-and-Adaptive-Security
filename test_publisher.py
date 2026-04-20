@@ -1,5 +1,5 @@
 """
-Test publisher — simulates ESP32 publishing telemetry to local MQTT broker
+Test publisher — simulates ESP32 publishing telemetry to public MQTT broker
 """
 
 import paho.mqtt.client as mqtt
@@ -7,20 +7,20 @@ import json
 import time
 from datetime import datetime, timezone
 
-# Try to publish to broker (if available locally)
-broker = "127.0.0.1"  # Local broker instead of test.mosquitto.org
+# Use public test broker (test.mosquitto.org) for consistency
+broker = "test.mosquitto.org"
 port = 1883
 
 device_id = "wokwi-device1"
 base_topic = "edgeiot"
 
-client = mqtt.Client(client_id="test-publisher", clean_session=True)
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="test-publisher", clean_session=True)
 
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
+def on_connect(client, userdata, connect_flags, reason_code, properties):
+    if reason_code == 0:
         print(f"✓ Connected to broker at {broker}:{port}")
     else:
-        print(f"✗ Connection failed with code {rc}")
+        print(f"✗ Connection failed with code {reason_code}")
 
 client.on_connect = on_connect
 
@@ -59,7 +59,5 @@ try:
     
 except Exception as e:
     print(f"Error: {e}")
-    print("\n⚠ No local MQTT broker found.")
-    print("To use this test, start a local broker first:")
-    print("  docker run -d -p 1883:1883 eclipse-mosquitto")
-    print("  OR install: apt-get install mosquitto")
+    print("\n⚠ Failed to connect to test.mosquitto.org")
+    print("Make sure you have internet connection and the public MQTT broker is accessible.")
