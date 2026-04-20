@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Edge IoT Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #080c10;
+      --panel:   #0d1520;
+      --border:  #1a2e45;
+      --accent:  #00e5ff;
+      --red:     #ff4d6d;
+      --green:   #00ff9f;
+      --yellow:  #ffd166;
+      --orange:  #ff9f43;
+      --text:    #c8dcea;
+      --dim:     #4a6a82;
+      --glow:    0 0 18px rgba(0,229,255,.3);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* scanlines */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.1) 2px,rgba(0,0,0,.1) 4px);
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+      background: var(--panel);
+    }
+    .logo { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: .15em; color: var(--accent); text-shadow: var(--glow); }
+    .logo span { color: var(--text); }
+    .header-right { display: flex; align-items: center; gap: 24px; }
+    #clock { font-family: 'Share Tech Mono', monospace; font-size: .85rem; color: var(--accent); }
+
+    .badge-conn {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Share Tech Mono', monospace; font-size: .72rem; color: var(--dim);
+    }
+    .badge-conn .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 8px var(--green);
+      animation: blink 2s ease-in-out infinite;
+    }
+    .badge-conn.offline .dot { background: var(--red); box-shadow: 0 0 8px var(--red); animation: none; }
+
+    /* ── ALERT BANNER ── */
+    #alert-banner {
+      display: none; align-items: center; gap: 12px;
+      background: rgba(255,77,109,.1);
+      border-bottom: 1px solid var(--red);
+      padding: 10px 32px;
+      font-family: 'Share Tech Mono', monospace; font-size: .8rem; color: var(--red);
+      animation: pulse-red 1s ease-in-out infinite;
+    }
+    #alert-banner.show { display: flex; }
+
+    /* ── LAYOUT ── */
+    main { padding: 24px 32px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── STAT ROW ── */
+    .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+
+    .stat-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+      padding: 20px 22px; position: relative; overflow: hidden;
+      animation: fade-in .4s ease both;
+      transition: border-color .3s, box-shadow .3s;
+    }
+    .stat-card:hover { border-color: var(--accent); box-shadow: var(--glow); }
+    .stat-card::after { content:''; position:absolute; top:0; left:0; width:3px; height:100%; background:var(--accent); }
+    .stat-card.ok::after   { background: var(--green); }
+    .stat-card.warn::after { background: var(--yellow); }
+    .stat-card.crit::after { background: var(--red); }
+    .stat-card.normal::after { background: var(--accent); }
+
+    .stat-label { font-size:.68rem; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); margin-bottom:10px; }
+    .stat-value { font-family:'Bebas Neue',sans-serif; font-size:2.6rem; line-height:1; color:var(--accent); text-shadow:var(--glow); }
+    .stat-value.ok   { color:var(--green);  text-shadow:0 0 16px rgba(0,255,159,.4); }
+    .stat-value.warn { color:var(--yellow); text-shadow:0 0 16px rgba(255,209,102,.4); }
+    .stat-value.crit { color:var(--red);    text-shadow:0 0 16px rgba(255,77,109,.4); }
+    .stat-unit { font-size:.95rem; opacity:.55; }
+    .stat-sub  { font-size:.7rem; color:var(--dim); margin-top:8px; font-family:'Share Tech Mono',monospace; }
+    .stat-card .icon { position:absolute; top:10px; right:14px; font-size:1.4rem; opacity:.08; }
+
+    /* Risk bar */
+    .risk-bar-wrap { margin-top:10px; height:4px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+    .risk-bar { height:100%; border-radius:2px; transition:width .6s ease, background .4s; }
+
+    /* Mode pill */
+    .mode-pill {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:5px 12px; border-radius:2px; font-family:'Share Tech Mono',monospace;
+      font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; margin-top:10px;
+    }
+    .mode-pill.NORMAL   { background:rgba(0,255,159,.08);   color:var(--green);  border:1px solid rgba(0,255,159,.2); }
+    .mode-pill.WARNING  { background:rgba(255,209,102,.08); color:var(--yellow); border:1px solid rgba(255,209,102,.2); }
+    .mode-pill.CRITICAL { background:rgba(255,77,109,.1);   color:var(--red);    border:1px solid rgba(255,77,109,.25); animation:pulse-red 1.2s ease-in-out infinite; }
+
+    /* ── CHART ROW ── */
+    .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 22px;
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;
+    }
+    .panel-title { font-family:'Bebas Neue',sans-serif; font-size:1rem; letter-spacing:.14em; color:var(--accent); }
+
+    .chart-legend { display:flex; gap:16px; font-size:.7rem; font-family:'Share Tech Mono',monospace; color:var(--dim); }
+    .chart-legend span { display:flex; align-items:center; gap:5px; }
+    .dl { width:8px;height:8px;border-radius:50%; }
+    .dl-t { background:var(--accent); }
+    .dl-h { background:var(--yellow); }
+    .dl-r { background:var(--orange); }
+
+    /* ── DEVICE CARDS ── */
+    .devices-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .device-card {
+      background:rgba(0,229,255,.03); border:1px solid var(--border); border-radius:3px;
+      padding:14px 16px;
+    }
+    .device-card.NORMAL   { border-color:rgba(0,255,159,.2); }
+    .device-card.WARNING  { border-color:rgba(255,209,102,.3); }
+    .device-card.CRITICAL { border-color:rgba(255,77,109,.35); }
+    .device-name { font-family:'Bebas Neue',monospace; font-size:.9rem; color:var(--accent); letter-spacing:.1em; margin-bottom:8px; }
+    .device-row  { display:flex; justify-content:space-between; font-size:.72rem; font-family:'Share Tech Mono',monospace; color:var(--dim); margin-bottom:4px; }
+    .device-row span:last-child { color:var(--text); }
+
+    /* ── LOG TABLE ── */
+    .log-table { width:100%; border-collapse:collapse; font-family:'Share Tech Mono',monospace; font-size:.72rem; }
+    .log-table th { text-align:left; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; padding:0 10px 10px; border-bottom:1px solid var(--border); }
+    .log-table td { padding:9px 10px; border-bottom:1px solid rgba(26,46,69,.4); }
+    .log-table tr:last-child td { border-bottom:none; }
+    .log-table tr:hover td { background:rgba(0,229,255,.025); }
+
+    .badge { display:inline-block; padding:2px 7px; border-radius:2px; font-size:.65rem; text-transform:uppercase; letter-spacing:.07em; }
+    .badge.Normal  { background:rgba(0,255,159,.1);   color:var(--green); }
+    .badge.Anomaly { background:rgba(255,77,109,.12); color:var(--red); }
+
+    .mode-tag { font-size:.65rem; font-family:'Share Tech Mono',monospace; text-transform:uppercase; }
+    .mode-tag.NORMAL   { color:var(--green); }
+    .mode-tag.WARNING  { color:var(--yellow); }
+    .mode-tag.CRITICAL { color:var(--red); }
+
+    /* ── REFRESH INDICATOR ── */
+    #refresh-bar-wrap { height:2px; background:rgba(0,229,255,.08); }
+    #refresh-bar { height:100%; background:var(--accent); transition:width .1s linear; width:100%; }
+
+    footer { text-align:center; padding:14px; font-size:.68rem; color:var(--dim); border-top:1px solid var(--border); font-family:'Share Tech Mono',monospace; }
+
+    /* ── ANIMATIONS ── */
+    @keyframes blink    { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes pulse-red{ 0%,100%{opacity:1} 50%{opacity:.55} }
+    @keyframes fade-in  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+    .stat-card:nth-child(1){animation-delay:.04s}
+    .stat-card:nth-child(2){animation-delay:.09s}
+    .stat-card:nth-child(3){animation-delay:.14s}
+    .stat-card:nth-child(4){animation-delay:.19s}
+    .stat-card:nth-child(5){animation-delay:.24s}
+
+    /* ── RESPONSIVE ── */
+    @media(max-width:1100px){ .stat-row{grid-template-columns:repeat(3,1fr)} .chart-row{grid-template-columns:1fr} }
+    @media(max-width:700px) { .stat-row{grid-template-columns:1fr 1fr}; main{padding:14px} header{padding:12px 16px} }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">EDGE<span>IOT</span></div>
+  <div class="header-right">
+    <div class="badge-conn" id="conn-badge"><div class="dot"></div><span id="conn-text">LIVE</span></div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div id="alert-banner">⚠ &nbsp;CRITICAL ANOMALY DETECTED — IMMEDIATE ATTENTION REQUIRED</div>
+
+<div id="refresh-bar-wrap"><div id="refresh-bar"></div></div>
+
+<main>
+
+  <!-- ── STAT CARDS ── -->
+  <div class="stat-row">
+
+    <div class="stat-card" id="card-temp">
+      <div class="icon">🌡</div>
+      <div class="stat-label">Avg Temperature</div>
+      <div class="stat-value" id="val-temp">--<span class="stat-unit">°C</span></div>
+      <div class="stat-sub"  id="sub-temp">RANGE: -- / --</div>
+    </div>
+
+    <div class="stat-card" id="card-humi">
+      <div class="icon">💧</div>
+      <div class="stat-label">Avg Humidity</div>
+      <div class="stat-value" id="val-humi">--<span class="stat-unit">%</span></div>
+      <div class="stat-sub">RELATIVE HUMIDITY</div>
+    </div>
+
+    <div class="stat-card" id="card-risk">
+      <div class="icon">⚡</div>
+      <div class="stat-label">Risk Score</div>
+      <div class="stat-value" id="val-risk">--<span class="stat-unit">/10</span></div>
+      <div class="risk-bar-wrap"><div class="risk-bar" id="risk-bar" style="width:0%"></div></div>
+      <div class="stat-sub" id="sub-risk">MULTI-FACTOR SCORE</div>
+    </div>
+
+    <div class="stat-card" id="card-mode">
+      <div class="icon">📡</div>
+      <div class="stat-label">System Mode</div>
+      <div class="mode-pill NORMAL" id="mode-pill">● NORMAL</div>
+      <div class="stat-sub" id="sub-mode">DEVICE: --</div>
+      <div class="stat-sub" id="sub-uptime">UPTIME: --</div>
+    </div>
+
+    <div class="stat-card" id="card-devices">
+      <div class="icon">🔌</div>
+      <div class="stat-label">Online Devices</div>
+      <div class="stat-value" id="val-devices">--</div>
+      <div class="stat-sub" id="sub-devices">ACTIVE SENSORS</div>
+    </div>
+
+  </div>
+
+  <!-- ── CHART + DEVICE PANEL ── -->
+  <div class="chart-row">
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">SENSOR HISTORY — LAST 20 RECORDS</div>
+        <div class="chart-legend">
+          <span><i class="dl dl-t"></i>Temp °C</span>
+          <span><i class="dl dl-h"></i>Humidity %</span>
+          <span><i class="dl dl-r"></i>Risk /10</span>
+        </div>
+      </div>
+      <canvas id="chart" height="110"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">DEVICE BREAKDOWN</div>
+      </div>
+      <div class="devices-grid" id="devices-grid">
+        <div style="color:var(--dim);font-size:.75rem;font-family:'Share Tech Mono',monospace;grid-column:1/-1;text-align:center;padding:20px">
+          Waiting for device data…
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── LOG TABLE ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">EVENT LOG</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim)">
+        REFRESH IN <span id="countdown">3</span>s
+      </div>
+    </div>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Time</th><th>Temp °C</th><th>Humidity %</th>
+          <th>Status</th><th>Mode</th><th>Risk</th><th>Devices</th>
+        </tr>
+      </thead>
+      <tbody id="log-body">
+        <tr><td colspan="8" style="color:var(--dim);text-align:center;padding:24px">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<footer>EDGE IoT DASHBOARD &nbsp;|&nbsp; AUTO-REFRESH 3s &nbsp;|&nbsp; MQTT → BRIDGE → FLASK</footer>
+
+<script>
+// ── Clock ────────────────────────────────────────────────────────────────────
+function tick() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-GB',{hour12:false});
+}
+setInterval(tick, 1000); tick();
+
+// ── Countdown + refresh bar ───────────────────────────────────────────────────
+const INTERVAL = 3000;
+let lastFetch  = Date.now();
+let cdown      = 3;
+
+setInterval(() => {
+  cdown = (cdown <= 1) ? 3 : cdown - 1;
+  document.getElementById('countdown').textContent = cdown;
+  const elapsed = Date.now() - lastFetch;
+  const pct     = Math.min(100, (elapsed / INTERVAL) * 100);
+  document.getElementById('refresh-bar').style.width = (100 - pct) + '%';
+}, 250);
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+let chart;
+const C_TEMP   = '#00e5ff';
+const C_HUMI   = '#ffd166';
+const C_RISK   = '#ff9f43';
+
+function buildOrUpdateChart(labels, temps, humids, risks) {
+  const ctx = document.getElementById('chart').getContext('2d');
+  if (!chart) {
+    chart = new Chart(ctx, {
+      data: {
+        labels,
+        datasets: [
+          {
+            type:'line', label:'Temperature (°C)',
+            data: temps, yAxisID:'y',
+            borderColor: C_TEMP, borderWidth:2,
+            backgroundColor: (() => {
+              const g = ctx.createLinearGradient(0,0,0,250);
+              g.addColorStop(0,'rgba(0,229,255,.15)');
+              g.addColorStop(1,'rgba(0,229,255,0)');
+              return g;
+            })(),
+            pointRadius:3, pointBackgroundColor:C_TEMP,
+            tension:.35, fill:true,
+          },
+          {
+            type:'line', label:'Humidity (%)',
+            data: humids, yAxisID:'y',
+            borderColor:C_HUMI, borderWidth:1.5, borderDash:[4,4],
+            pointRadius:3, pointBackgroundColor:C_HUMI,
+            tension:.35, fill:false, backgroundColor:'transparent',
+          },
+          {
+            type:'bar', label:'Risk /10',
+            data: risks, yAxisID:'y2',
+            backgroundColor: risks.map(r =>
+              r >= 7 ? 'rgba(255,77,109,.35)'
+            : r >= 4 ? 'rgba(255,209,102,.25)'
+                     : 'rgba(255,159,67,.2)'),
+            borderRadius:2, borderSkipped:false,
+          },
+        ]
+      },
+      options: {
+        responsive:true,
+        animation:{duration:500, easing:'easeInOutQuart'},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'#0d1520', borderColor:'#1a2e45', borderWidth:1,
+            titleColor:'#4a6a82', bodyColor:'#c8dcea',
+            titleFont:{family:"'Share Tech Mono',monospace",size:10},
+            bodyFont: {family:"'Share Tech Mono',monospace",size:11},
+            padding:10,
+            callbacks:{label: c=>`  ${c.dataset.label}: ${c.parsed.y}`}
+          }
+        },
+        scales:{
+          x:{
+            grid:{color:'rgba(26,46,69,.5)'},
+            ticks:{color:'#4a6a82',font:{family:"'Share Tech Mono',monospace",size:9}}
+          },
+          y:{
+            position:'left',
+            grid:{color:'rgba(26,46,69,.5)'},
+            ticks:{color:'#4a6a82',font:{family:"'Share Tech Mono',monospace",size:9}}
+          },
+          y2:{
+            position:'right', min:0, max:10,
+            grid:{drawOnChartArea:false},
+            ticks:{color:'#ff9f43',font:{family:"'Share Tech Mono',monospace",size:9}}
+          }
+        }
+      }
+    });
+  } else {
+    chart.data.labels                 = labels;
+    chart.data.datasets[0].data      = temps;
+    chart.data.datasets[1].data      = humids;
+    chart.data.datasets[2].data      = risks;
+    chart.data.datasets[2].backgroundColor = risks.map(r =>
+      r >= 7 ? 'rgba(255,77,109,.35)'
+    : r >= 4 ? 'rgba(255,209,102,.25)'
+             : 'rgba(255,159,67,.2)');
+    chart.update('active');
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function tempClass(t) {
+  if (t > 45 || t < 10) return 'crit';
+  if (t > 35)           return 'warn';
+  return 'ok';
+}
+function riskColor(r) {
+  if (r >= 7) return '#ff4d6d';
+  if (r >= 4) return '#ffd166';
+  return '#00ff9f';
+}
+function fmtUptime(s) {
+  if (!s) return '--';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return `${h}h ${m}m ${sec}s`;
+}
+function fmtTime(ts) {
+  try { return new Date(ts).toLocaleTimeString('en-GB',{hour12:false}); }
+  catch { return '--'; }
+}
+
+// ── Update stat cards ─────────────────────────────────────────────────────────
+function updateCards(d) {
+  const lat  = d.latest || {};
+  const temps = d.temperature || [];
+  const risk  = lat.risk ?? 0;
+
+  // Temp
+  const tc = tempClass(lat.temperature ?? 0);
+  document.getElementById('val-temp').innerHTML =
+    `${lat.temperature ?? '--'}<span class="stat-unit">°C</span>`;
+  document.getElementById('val-temp').className = 'stat-value ' + tc;
+  document.getElementById('card-temp').className = 'stat-card ' + tc;
+  if (temps.length) {
+    const mn = Math.min(...temps).toFixed(1), mx = Math.max(...temps).toFixed(1);
+    document.getElementById('sub-temp').textContent = `RANGE: ${mn} / ${mx} °C`;
+  }
+
+  // Humidity
+  document.getElementById('val-humi').innerHTML =
+    `${lat.humidity ?? '--'}<span class="stat-unit">%</span>`;
+
+  // Risk
+  document.getElementById('val-risk').innerHTML =
+    `${risk}<span class="stat-unit">/10</span>`;
+  const riskBar = document.getElementById('risk-bar');
+  riskBar.style.width    = (risk * 10) + '%';
+  riskBar.style.background = riskColor(risk);
+  document.getElementById('card-risk').className =
+    'stat-card ' + (risk >= 7 ? 'crit' : risk >= 4 ? 'warn' : 'ok');
+
+  // Mode
+  const mode = lat.mode || 'NORMAL';
+  const pill = document.getElementById('mode-pill');
+  pill.className   = 'mode-pill ' + mode;
+  pill.textContent = '● ' + mode;
+  document.getElementById('sub-mode').textContent = `DEVICE: ${lat.device_id || '--'}`;
+  document.getElementById('sub-uptime').textContent = `UPTIME: ${fmtUptime(lat.uptime)}`;
+
+  // Devices
+  document.getElementById('val-devices').textContent = lat.device_count ?? '--';
+
+  // Alert
+  document.getElementById('alert-banner').className =
+    d.alert ? 'show' : '';
+}
+
+// ── Device breakdown panel ────────────────────────────────────────────────────
+function updateDevices(devices) {
+  const grid = document.getElementById('devices-grid');
+  const keys = Object.keys(devices || {});
+  if (!keys.length) return;
+
+  grid.innerHTML = keys.map(id => {
+    const dv = devices[id];
+    const m  = dv.mode || 'NORMAL';
+    return `
+      <div class="device-card ${m}">
+        <div class="device-name">${id.toUpperCase()}</div>
+        <div class="device-row"><span>TEMP</span><span>${dv.temperature ?? '--'}°C</span></div>
+        <div class="device-row"><span>HUMIDITY</span><span>${dv.humidity ?? '--'}%</span></div>
+        <div class="device-row"><span>RISK</span><span>${dv.risk ?? '--'}/10</span></div>
+        <div class="device-row"><span>STATUS</span><span class="mode-tag ${m}">${m}</span></div>
+      </div>`;
+  }).join('');
+}
+
+// ── Log table ─────────────────────────────────────────────────────────────────
+function updateTable(d) {
+  const rows = (d.timestamps || []).map((ts, i) => ({
+    ts,
+    temp:   d.temperature[i],
+    humi:   d.humidity[i],
+    status: d.status[i],
+    mode:   (d.modes  || [])[i] || 'NORMAL',
+    risk:   (d.risks  || [])[i] ?? '--',
+    devices:'-',   // aggregate; per-row device count not stored
+  })).reverse();
+
+  const tbody = document.getElementById('log-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--dim);text-align:center;padding:20px">No data</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr>
+      <td style="color:var(--dim)">${rows.length - i}</td>
+      <td>${fmtTime(r.ts)}</td>
+      <td>${r.temp ?? '--'}</td>
+      <td>${r.humi ?? '--'}</td>
+      <td><span class="badge ${r.status}">${(r.status||'--').toUpperCase()}</span></td>
+      <td><span class="mode-tag ${r.mode}">${r.mode}</span></td>
+      <td>${r.risk}</td>
+      <td>--</td>
+    </tr>`).join('');
+}
+
+// ── Main refresh ──────────────────────────────────────────────────────────────
+async function refresh() {
+  try {
+    const res  = await fetch('/data');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    updateCards(data);
+    updateDevices(data.devices);
+
+    const labels = (data.timestamps || []).map(ts => fmtTime(ts));
+    buildOrUpdateChart(labels, data.temperature || [], data.humidity || [], data.risks || []);
+    updateTable(data);
+
+    // connection OK
+    document.getElementById('conn-badge').classList.remove('offline');
+    document.getElementById('conn-text').textContent = 'LIVE';
+  } catch (e) {
+    console.error(e);
+    document.getElementById('conn-badge').classList.add('offline');
+    document.getElementById('conn-text').textContent = 'OFFLINE';
+  }
+  lastFetch = Date.now();
+}
+
+setInterval(refresh, INTERVAL);
+refresh();
+</script>
+</body>
+</html>
