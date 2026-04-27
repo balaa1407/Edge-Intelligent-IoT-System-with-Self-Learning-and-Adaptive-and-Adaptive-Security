@@ -138,6 +138,12 @@ def classify(temp: float, humi: float) -> str:
 
 # ── WIFI ──────────────────────────────────────────────────────────────────────
 def connect_wifi() -> bool:
+    """
+    Connect ESP32 to WiFi network.
+    
+    Returns:
+        True if successfully connected, False on timeout
+    """
     cfg  = CONFIG["wifi"]
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
@@ -160,6 +166,12 @@ def connect_wifi() -> bool:
 
 
 def ensure_wifi() -> bool:
+    """
+    Ensure WiFi connection is active, reconnect if needed.
+    
+    Returns:
+        True if connected, False if connection failed
+    """
     if network.WLAN(network.STA_IF).isconnected():
         return True
     log("WARN", "WiFi lost — reconnecting…")
@@ -171,10 +183,25 @@ _mqtt_client = None
 
 
 def _lwt_topic(device_id: str) -> bytes:
+    """
+    Construct Last Will Testament topic for a device.
+    
+    Args:
+        device_id: Device identifier
+        
+    Returns:
+        Topic path as bytes
+    """
     return f"{CONFIG['mqtt']['base_topic']}/{device_id}/status".encode()
 
 
 def connect_mqtt() -> bool:
+    """
+    Connect ESP32 MQTT client to broker.
+    
+    Returns:
+        True if successfully connected, False otherwise
+    """
     global _mqtt_client
     cfg = CONFIG["mqtt"]
 
