@@ -234,17 +234,34 @@ def score_risk(device: DeviceState) -> dict:
 
 # ── MQTT CALLBACKS ────────────────────────────────────────────────────────────
 def on_connect(client, userdata, connect_flags, reason_code, properties):
-    rc_map = {0:"OK",1:"Bad protocol",2:"ID rejected",3:"Server unavailable",
-              4:"Bad credentials",5:"Not authorised"}
+    """
+    MQTT on_connect callback handler.
+    
+    Logs connection status and subscribes to topics.
+    """
+    rc_map = {
+        0: "OK",
+        1: "Bad protocol",
+        2: "ID rejected",
+        3: "Server unavailable",
+        4: "Bad credentials",
+        5: "Not authorised"
+    }
     if reason_code == 0:
         log.info(f"✓ MQTT connected → {CONFIG['mqtt']['server']}")
         client.subscribe(CONFIG["mqtt"]["base_topic"])
         log.info(f"✓ Subscribed: {CONFIG['mqtt']['base_topic']}")
     else:
-        log.error(f"✗ MQTT connect failed [{reason_code}]: {rc_map.get(reason_code, reason_code)}")
+        reason_text = rc_map.get(reason_code, f"Unknown ({reason_code})")
+        log.error(f"✗ MQTT connect failed [{reason_code}]: {reason_text}")
 
 
 def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+    """
+    MQTT on_disconnect callback handler.
+    
+    Logs disconnection events.
+    """
     if reason_code != 0:
         log.warning(f"⚠ MQTT disconnected (rc={reason_code}) - will attempt to reconnect automatically")
     else:
