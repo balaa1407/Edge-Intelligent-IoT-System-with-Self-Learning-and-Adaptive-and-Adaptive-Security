@@ -268,7 +268,15 @@ def publish_payload(topic: str, payload: dict) -> bool:
 
 # ── TELEMETRY ─────────────────────────────────────────────────────────────────
 def publish_telemetry() -> int:
-    """Publish all devices. Returns number of failures."""
+    """
+    Publish sensor telemetry for all configured devices.
+    
+    Reads temperature, humidity, and device status, publishes JSON to each device's
+    telemetry topic.
+    
+    Returns:
+        Number of failures (0 = all successful)
+    """
     base     = CONFIG["mqtt"]["base_topic"]
     failures = 0
 
