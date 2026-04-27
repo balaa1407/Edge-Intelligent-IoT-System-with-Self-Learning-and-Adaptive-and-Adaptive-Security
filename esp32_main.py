@@ -59,11 +59,18 @@ def uptime_s() -> float:
 
 
 def log(level: str, msg: str) -> None:
+    """
+    Log a message with timestamp and level.
+    
+    Args:
+        level: Log level (INFO, WARN, ERROR, DATA, etc.)
+        msg: Message to log
+    """
     print(f"[{uptime_s():8.1f}s] [{level:5}] {msg}")
 
 
 # ── SENSOR SIMULATION ─────────────────────────────────────────────────────────
-# Replace these two functions with real sensor reads in production:
+# Replace these functions with real sensor reads in production:
 #
 #   import dht
 #   _sensor = dht.DHT22(machine.Pin(4))
@@ -77,6 +84,16 @@ def log(level: str, msg: str) -> None:
 #       return round(_sensor.humidity(), 2)
 
 def read_temperature(device_id: str) -> float:
+    """
+    Read temperature for a device.
+    
+    Currently simulates readings with occasional anomalies.
+    Args:
+        device_id: Device identifier string
+        
+    Returns:
+        Temperature in Celsius (float)
+    """
     base  = {"device1": 25.0, "device2": 27.0}.get(device_id, 25.0)
     spike = random.choice([0, 0, 0, 0, 18, -17])   # occasional anomaly
     noise = random.uniform(-0.5, 0.5)
@@ -84,18 +101,39 @@ def read_temperature(device_id: str) -> float:
 
 
 def read_humidity(device_id: str) -> float:
+    """
+    Read humidity for a device.
+    
+    Currently simulates readings with noise.
+    Args:
+        device_id: Device identifier string
+        
+    Returns:
+        Humidity as percentage (0-100)
+    """
     base  = {"device1": 55.0, "device2": 60.0}.get(device_id, 55.0)
     noise = random.uniform(-2.0, 2.0)
     return round(max(0.0, min(100.0, base + noise)), 2)
 
 
 def classify(temp: float, humi: float) -> str:
+    """
+    Classify sensor readings as WARNING or OK.
+    
+    Args:
+        temp: Temperature in Celsius
+        humi: Humidity as percentage
+        
+    Returns:
+        "WARNING" if out of bounds, "OK" otherwise
+    """
     t = CONFIG["thresholds"]
     if temp >= t["temp_high"] or temp <= t["temp_low"]:
         return "WARNING"
     if humi >= t["humi_high"] or humi <= t["humi_low"]:
         return "WARNING"
     return "OK"
+
 
 
 # ── WIFI ──────────────────────────────────────────────────────────────────────
