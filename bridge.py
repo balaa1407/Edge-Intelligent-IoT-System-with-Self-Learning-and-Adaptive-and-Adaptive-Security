@@ -360,6 +360,11 @@ def process_messages() -> None:
 
 # ── AGGREGATE & LOG ───────────────────────────────────────────────────────────
 def aggregate_and_log() -> None:
+    """
+    Aggregate data from all online devices and write to log file.
+    
+    Calculates averages, overall risk score, and writes structured JSON record.
+    """
     with _devices_lock:
         snapshot = {k: v for k, v in _devices.items() if v.online and v.latest}
 
@@ -367,12 +372,15 @@ def aggregate_and_log() -> None:
         log.warning("⏳ Waiting for device data…")
         return
 
+    # Safely collect all temperature and humidity readings
     all_temps = [d.latest["temperature"] for d in snapshot.values() if "temperature" in d.latest]
     all_humis = [d.latest["humidity"]    for d in snapshot.values() if "humidity"    in d.latest]
 
+    # Calculate averages safely
     avg_temp = round(sum(all_temps) / len(all_temps), 2) if all_temps else None
     avg_humi = round(sum(all_humis) / len(all_humis), 2) if all_humis else None
 
+    # Build per-device records
     device_records = {}
     for dev_id, device in snapshot.items():
         risk = score_risk(device)
@@ -387,10 +395,12 @@ def aggregate_and_log() -> None:
             "last_seen":   device.last_seen.isoformat() if device.last_seen else None,
         }
 
+    # Calculate overall system risk
     top_risk   = max((score_risk(d)["score"] for d in snapshot.values()), default=0)
     top_mode   = "CRITICAL" if top_risk >= 7 else ("WARNING" if top_risk >= 4 else "NORMAL")
     top_status = "Anomaly" if top_risk >= 4 else "Normal"
 
+    # Build aggregated record
     record = {
         "timestamp":    datetime.now(timezone.utc).isoformat(),
         "temperature":  avg_temp,
