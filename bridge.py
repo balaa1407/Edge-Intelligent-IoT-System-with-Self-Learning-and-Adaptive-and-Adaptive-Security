@@ -423,6 +423,12 @@ def aggregate_and_log() -> None:
 
 # ── ENTRY POINT ───────────────────────────────────────────────────────────────
 def run() -> None:
+    """
+    Main entry point for the Edge IoT MQTT bridge.
+    
+    Initializes MQTT connection, starts processing loop, and gracefully
+    handles shutdown signals.
+    """
     log.info("🚀 Edge IoT bridge starting…")
 
     client = build_mqtt_client()
