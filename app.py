@@ -14,7 +14,15 @@ MAX_RECORDS = 20
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def parse_log(n: int = MAX_RECORDS) -> list[dict]:
-    """Return the last n non-empty JSON lines from log.json."""
+    """
+    Return the last n non-empty JSON lines from log.json.
+    
+    Args:
+        n: Number of records to return
+        
+    Returns:
+        List of parsed JSON objects from the log file
+    """
     if not os.path.exists(LOG_FILE):
         return []
     records = []
