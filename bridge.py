@@ -290,10 +290,15 @@ def on_message(client, userdata, msg):
     # Debug: Log every message received
     log.debug(f"📨 Message received on {msg.topic}")
     _message_queue.put((msg.topic, payload))
-    _message_queue.put((msg.topic, payload))
 
 
 def build_mqtt_client() -> mqtt.Client:
+    """
+    Create and configure MQTT client instance.
+    
+    Returns:
+        Configured mqtt.Client object ready for connection
+    """
     cfg    = CONFIG["mqtt"]
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=cfg["client_id"], clean_session=True)
     client.on_connect    = on_connect
