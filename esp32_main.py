@@ -227,6 +227,12 @@ def connect_mqtt() -> bool:
 
 
 def ensure_mqtt() -> bool:
+    """
+    Ensure MQTT client is connected, reconnect if needed.
+    
+    Returns:
+        True if connected, False if connection failed
+    """
     if _mqtt_client is not None:
         return True
     log("WARN", "MQTT gone — reconnecting…")
@@ -234,6 +240,16 @@ def ensure_mqtt() -> bool:
 
 
 def publish_payload(topic: str, payload: dict) -> bool:
+    """
+    Publish a JSON payload to an MQTT topic.
+    
+    Args:
+        topic: MQTT topic string
+        payload: Dictionary to serialize and publish
+        
+    Returns:
+        True if publish succeeded, False otherwise
+    """
     global _mqtt_client
     if _mqtt_client is None:
         return False
