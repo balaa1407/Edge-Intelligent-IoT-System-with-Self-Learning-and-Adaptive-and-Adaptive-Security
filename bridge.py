@@ -174,6 +174,23 @@ _shutdown       = threading.Event()
 
 # ── RISK SCORING ──────────────────────────────────────────────────────────────
 def score_risk(device: DeviceState) -> dict:
+    """
+    Calculate risk score for a device based on multiple factors.
+    
+    Risk scoring rules:
+    - Critical high or low temperature: +5
+    - High temperature: +2
+    - Humidity out of bounds: +2
+    - Device status warning: +2
+    - Temperature anomaly: +2
+    - Humidity anomaly: +1
+    
+    Args:
+        device: DeviceState instance to score
+        
+    Returns:
+        Dictionary with score (0-10), mode (NORMAL/WARNING/CRITICAL), and status
+    """
     t          = CONFIG["thresholds"]
     data       = device.latest
     temp       = data.get("temperature", 0)
@@ -182,17 +199,21 @@ def score_risk(device: DeviceState) -> dict:
 
     score = 0
 
+    # Temperature scoring
     if temp >= t["temp_critical_high"] or temp <= t["temp_low"]:
         score += 5
     elif temp >= t["temp_high"]:
         score += 2
 
+    # Humidity scoring
     if humi >= t["humi_high"] or humi <= t["humi_low"]:
         score += 2
 
+    # Device status scoring
     if dev_status == "WARNING":
         score += 2
 
+    # Anomaly scoring
     if device.is_temp_anomaly():
         score += 2
     if device.is_humi_anomaly():
@@ -200,6 +221,7 @@ def score_risk(device: DeviceState) -> dict:
 
     score = min(score, 10)
 
+    # Determine mode and status based on score
     if score >= 7:
         mode, status = "CRITICAL", "Anomaly"
     elif score >= 4:
