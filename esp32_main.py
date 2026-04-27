@@ -310,6 +310,12 @@ def publish_telemetry() -> int:
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def run() -> None:
+    """
+    Main entry point - Initialize connections and start publishing loop.
+    
+    Handles initial connection with exponential backoff, then enters main
+    publish loop, monitoring for connection failures and excessive errors.
+    """
     log("INFO", "Edge IoT ESP32 publisher starting…")
     delay = CONFIG["backoff_base"]
 
