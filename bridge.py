@@ -313,6 +313,11 @@ def build_mqtt_client() -> mqtt.Client:
 
 # ── MESSAGE PROCESSOR ─────────────────────────────────────────────────────────
 def process_messages() -> None:
+    """
+    Process all messages in the queue.
+    
+    Handles device registration, status updates, and telemetry processing.
+    """
     message_count = 0
     while not _message_queue.empty():
         try:
@@ -321,6 +326,7 @@ def process_messages() -> None:
             break
 
         message_count += 1
+        # Parse MQTT topic structure: edgeiot/device_id/subtopic
         parts     = topic.split("/")
         device_id = parts[1] if len(parts) >= 2 else "unknown"
         subtopic  = parts[2] if len(parts) >= 3 else ""
@@ -331,11 +337,13 @@ def process_messages() -> None:
                 log.info(f"✓ New device: {device_id}")
             device = _devices[device_id]
 
+        # Handle offline status (Last Will and Testament)
         if subtopic == "status" and payload.get("status") == "OFFLINE":
             log.warning(f"[{device_id}] OFFLINE (LWT)")
             device.online = False
             continue
 
+        # Handle telemetry updates
         if subtopic == "telemetry":
             device.update(payload)
             risk = score_risk(device)
