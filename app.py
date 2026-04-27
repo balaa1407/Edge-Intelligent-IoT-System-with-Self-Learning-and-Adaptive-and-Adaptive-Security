@@ -43,12 +43,21 @@ def parse_log(n: int = MAX_RECORDS) -> list[dict]:
 
 
 def iso_to_display(ts: str | None) -> str:
+    """
+    Convert ISO timestamp string to display format.
+    
+    Args:
+        ts: ISO format timestamp string or None
+        
+    Returns:
+        Formatted time string or "--" if invalid
+    """
     if not ts:
         return "--"
     try:
         dt = datetime.fromisoformat(ts)
         return dt.astimezone().strftime("%H:%M:%S")
-    except Exception:
+    except (ValueError, TypeError):
         return ts
 
 
