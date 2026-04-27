@@ -269,15 +269,27 @@ def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
 
 
 def on_message(client, userdata, msg):
+    """
+    MQTT on_message callback handler.
+    
+    Decodes payload and queues for processing.
+    """
     try:
         raw     = msg.payload.decode("utf-8")
         payload = json.loads(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        log.warning(f"Bad payload on {msg.topic}: {e}")
+    except UnicodeDecodeError as e:
+        log.warning(f"Bad payload encoding on {msg.topic}: {e}")
+        return
+    except json.JSONDecodeError as e:
+        log.warning(f"Bad JSON on {msg.topic}: {e}")
+        return
+    except Exception as e:
+        log.error(f"Unexpected error parsing message on {msg.topic}: {e}")
         return
     
     # Debug: Log every message received
     log.debug(f"📨 Message received on {msg.topic}")
+    _message_queue.put((msg.topic, payload))
     _message_queue.put((msg.topic, payload))
 
 
