@@ -102,9 +102,14 @@ import os  # needed for write_json_log
 
 # ── DEVICE STATE ──────────────────────────────────────────────────────────────
 class DeviceState:
-    """Holds rolling history and last telemetry for a single device."""
+    """
+    Holds rolling history and last telemetry for a single device.
+    
+    Tracks temperature and humidity readings and performs Z-score anomaly detection.
+    """
 
     def __init__(self, device_id: str):
+        """Initialize device state with empty history."""
         self.device_id = device_id
         self.temp_hist = deque(maxlen=CONFIG["anomaly"]["max_history"])
         self.humi_hist = deque(maxlen=CONFIG["anomaly"]["max_history"])
@@ -113,6 +118,12 @@ class DeviceState:
         self.latest    = {}
 
     def update(self, payload: dict) -> None:
+        """
+        Update device with new telemetry reading.
+        
+        Args:
+            payload: Dictionary with temperature and humidity data
+        """
         self.latest    = payload
         self.last_seen = datetime.now(timezone.utc)
         self.online    = True
@@ -124,6 +135,16 @@ class DeviceState:
     # ── Z-score helpers ──────────────────────────────────────────────────────
     @staticmethod
     def _z_score(history: deque, value: float) -> float | None:
+        """
+        Calculate Z-score for anomaly detection.
+        
+        Args:
+            history: Deque of historical values
+            value: Current value to test
+            
+        Returns:
+            Z-score if enough history data, None otherwise
+        """
         if len(history) < CONFIG["anomaly"]["min_history"]:
             return None
         mean     = sum(history) / len(history)
@@ -134,10 +155,12 @@ class DeviceState:
         return abs((value - mean) / std)
 
     def is_temp_anomaly(self) -> bool:
+        """Check if current temperature is anomalous."""
         z = self._z_score(self.temp_hist, self.latest.get("temperature", 0))
         return z is not None and z > CONFIG["anomaly"]["z_threshold"]
 
     def is_humi_anomaly(self) -> bool:
+        """Check if current humidity is anomalous."""
         z = self._z_score(self.humi_hist, self.latest.get("humidity", 0))
         return z is not None and z > CONFIG["anomaly"]["z_threshold"]
 
