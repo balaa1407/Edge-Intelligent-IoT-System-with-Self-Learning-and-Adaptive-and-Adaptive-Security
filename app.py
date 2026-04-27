@@ -149,6 +149,12 @@ def data():
 
 @app.route("/health")
 def health():
+    """
+    Health check endpoint.
+    
+    Returns:
+        JSON object with status and current timestamp
+    """
     return jsonify({"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()})
 
 
