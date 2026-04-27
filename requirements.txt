@@ -1,2 +1,9 @@
+# Edge IoT Project Dependencies
+# Python 3.9+
+
+# Web framework for the dashboard
 flask>=3.0.0
+
+# MQTT client library for Python bridge
 paho-mqtt>=2.0.0
+
