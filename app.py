@@ -70,8 +70,20 @@ def index():
 
 @app.route("/data")
 def data():
+    """
+    Serve the latest sensor data and chart information.
+    
+    Returns:
+        JSON object with time-series data and latest readings
+    """
     try:
         records = parse_log()
+        if not records:
+            return jsonify({
+                "temperature": [], "humidity": [], "status": [],
+                "timestamps": [], "modes": [], "risks": [],
+                "latest": {}, "devices": {}, "alert": False,
+            }), 200
 
         temps, humidity, status, timestamps, modes, risks = [], [], [], [], [], []
         for d in records:
@@ -112,6 +124,20 @@ def data():
             "alert":   alert,
         })
 
+    except json.JSONDecodeError as e:
+        app.logger.error(f"/data JSON error: {e}")
+        return jsonify({
+            "temperature": [], "humidity": [], "status": [],
+            "timestamps": [], "modes": [], "risks": [],
+            "latest": {}, "devices": {}, "alert": False,
+        }), 400
+    except IOError as e:
+        app.logger.error(f"/data IO error: {e}")
+        return jsonify({
+            "temperature": [], "humidity": [], "status": [],
+            "timestamps": [], "modes": [], "risks": [],
+            "latest": {}, "devices": {}, "alert": False,
+        }), 500
     except Exception as e:
         app.logger.error(f"/data error: {e}")
         return jsonify({
