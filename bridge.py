@@ -74,6 +74,14 @@ _log_lock = threading.Lock()
 
 
 def write_json_log(record: dict) -> None:
+    """
+    Write a JSON record to the log file with automatic rotation.
+    
+    Args:
+        record: Dictionary to serialize and write as JSON
+        
+    Safely handles concurrent writes and file rotation.
+    """
     cfg = CONFIG["log"]
     line = json.dumps(record) + "\n"
     with _log_lock:
@@ -88,7 +96,15 @@ def write_json_log(record: dict) -> None:
 
 
 def _rotate_log(path: str, backups: int) -> None:
-    import os, shutil
+    """
+    Rotate log files manually.
+    
+    Renames existing backups and moves current log to .1 backup.
+    
+    Args:
+        path: Path to the main log file
+        backups: Number of backup files to maintain
+    """
     for i in range(backups - 1, 0, -1):
         src = f"{path}.{i}"
         dst = f"{path}.{i+1}"
