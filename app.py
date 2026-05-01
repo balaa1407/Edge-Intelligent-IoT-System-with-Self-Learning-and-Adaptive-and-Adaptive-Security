@@ -15,6 +15,20 @@ app = Flask(__name__)
 LOG_FILE = "log.json"
 MAX_RECORDS = 20
 
+# ── cache control ─────────────────────────────────────────────────────────────
+
+@app.after_request
+def add_no_cache_headers(response):
+    """
+    Disable caching for all responses.
+    
+    Ensures dashboard always shows latest data from log.json.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def parse_log(n: int = MAX_RECORDS) -> list[dict]:
