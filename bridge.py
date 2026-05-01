@@ -404,9 +404,16 @@ def aggregate_and_log() -> None:
     all_temps = [d.latest["temperature"] for d in snapshot.values() if "temperature" in d.latest]
     all_humis = [d.latest["humidity"]    for d in snapshot.values() if "humidity"    in d.latest]
 
-    # Calculate averages safely
-    avg_temp = round(sum(all_temps) / len(all_temps), 2) if all_temps else None
-    avg_humi = round(sum(all_humis) / len(all_humis), 2) if all_humis else None
+    # Calculate averages safely - avoid division by zero
+    if all_temps:
+        avg_temp = round(sum(all_temps) / len(all_temps), 2)
+    else:
+        avg_temp = None
+        
+    if all_humis:
+        avg_humi = round(sum(all_humis) / len(all_humis), 2)
+    else:
+        avg_humi = None
 
     # Build per-device records
     device_records = {}
