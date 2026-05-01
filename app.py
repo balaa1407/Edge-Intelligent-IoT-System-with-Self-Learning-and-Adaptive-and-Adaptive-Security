@@ -4,11 +4,15 @@ Reads log.json written by bridge.py and serves the real-time dashboard.
 """
 
 from flask import Flask, render_template, jsonify
-import json, os
+import json
+import os
 from datetime import datetime, timezone
 
-app     = Flask(__name__)
-LOG_FILE    = "log.json"
+# Initialize Flask app
+app = Flask(__name__)
+
+# Configuration constants
+LOG_FILE = "log.json"
 MAX_RECORDS = 20
 
 # ── helpers ───────────────────────────────────────────────────────────────────
