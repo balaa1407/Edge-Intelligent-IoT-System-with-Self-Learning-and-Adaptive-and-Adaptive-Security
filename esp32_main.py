@@ -51,10 +51,17 @@ CONFIG = {
 }
 # ── END CONFIG ────────────────────────────────────────────────────────────────
 
+# Boot time marker for calculating uptime
 _start_ms = time.ticks_ms()
 
 
 def uptime_s() -> float:
+    """
+    Get elapsed time since ESP32 boot in seconds.
+    
+    Returns:
+        Uptime in seconds as float
+    """
     return time.ticks_diff(time.ticks_ms(), _start_ms) / 1000.0
 
 
