@@ -143,10 +143,22 @@ class DeviceState:
         self.latest    = payload
         self.last_seen = datetime.now(timezone.utc)
         self.online    = True
+        
+        # Safely extract and validate temperature
         if "temperature" in payload:
-            self.temp_hist.append(float(payload["temperature"]))
+            try:
+                temp_val = float(payload["temperature"])
+                self.temp_hist.append(temp_val)
+            except (ValueError, TypeError):
+                pass  # Skip invalid values
+                
+        # Safely extract and validate humidity
         if "humidity" in payload:
-            self.humi_hist.append(float(payload["humidity"]))
+            try:
+                humi_val = float(payload["humidity"])
+                self.humi_hist.append(humi_val)
+            except (ValueError, TypeError):
+                pass  # Skip invalid values
 
     # ── Z-score helpers ──────────────────────────────────────────────────────
     @staticmethod
