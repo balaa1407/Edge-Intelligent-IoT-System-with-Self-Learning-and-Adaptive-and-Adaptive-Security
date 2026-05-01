@@ -46,17 +46,17 @@ CONFIG = {
         "z_threshold":  2.0,    # standard deviations for anomaly flag
     },
     "thresholds": {
-        "temp_critical_high": 45.0,  # Critical high threshold
+        "temp_critical_high": 45.0,  # Critical high temperature
         "temp_high":          35.0,  # Warning temperature
-        "temp_low":           10.0,
-        "humi_high":          80.0,
-        "humi_low":           20.0,
+        "temp_low":           10.0,  # Low temperature warning
+        "humi_high":          80.0,  # High humidity warning
+        "humi_low":           20.0,  # Low humidity warning
     },
     "log": {
         "file":         "log.json",
-        "max_bytes":    1_000_000,   # 1 MB
-        "backup_count": 3,
-        "interval":     1,           # seconds between log writes
+        "max_bytes":    1_000_000,   # 1 MB max file size
+        "backup_count": 3,           # Keep 3 backup files
+        "interval":     0.2,         # seconds between log writes
     },
 }
 # ── END CONFIG ────────────────────────────────────────────────────────────────
