@@ -480,12 +480,15 @@ def run() -> None:
 
     client.loop_start()
 
+    # Setup signal handlers for graceful shutdown
     def _handle_signal(sig, frame):
-        log.info("🛑 Shutdown signal received…")
+        """Handle shutdown signals."""
+        sig_name = signal.Signals(sig).name
+        log.info(f"🛑 Received {sig_name} signal — shutting down gracefully…")
         _shutdown.set()
 
-    signal.signal(signal.SIGINT,  _handle_signal)
-    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT,  _handle_signal)   # Ctrl+C
+    signal.signal(signal.SIGTERM, _handle_signal)   # kill signal
 
     interval = CONFIG["log"]["interval"]
     log.info(f"✓ Loop started — updating every {interval}s\n")
