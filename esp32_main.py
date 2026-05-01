@@ -88,6 +88,9 @@ def read_temperature(device_id: str) -> float:
     Read temperature for a device.
     
     Currently simulates readings with occasional anomalies.
+    Device1 baseline: 25°C, Device2 baseline: 27°C
+    Occasional spikes (18°C jump or -17°C drop) to test anomaly detection.
+    
     Args:
         device_id: Device identifier string
         
@@ -95,7 +98,9 @@ def read_temperature(device_id: str) -> float:
         Temperature in Celsius (float)
     """
     base  = {"device1": 25.0, "device2": 27.0}.get(device_id, 25.0)
-    spike = random.choice([0, 0, 0, 0, 18, -17])   # occasional anomaly
+    # Generate occasional anomalies: 4/6 chance of normal, 1/6 hot spike, 1/6 cold spike
+    spike = random.choice([0, 0, 0, 0, 18, -17])
+    # Small random noise to add realism
     noise = random.uniform(-0.5, 0.5)
     return round(base + spike + noise, 2)
 
@@ -105,6 +110,9 @@ def read_humidity(device_id: str) -> float:
     Read humidity for a device.
     
     Currently simulates readings with noise.
+    Device1 baseline: 55% RH, Device2 baseline: 60% RH
+    Clamped to 0-100% range.
+    
     Args:
         device_id: Device identifier string
         
