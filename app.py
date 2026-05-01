@@ -31,6 +31,20 @@ def add_no_cache_headers(response):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def is_valid_record(record: dict) -> bool:
+    """
+    Validate that a record has required fields.
+    
+    Args:
+        record: JSON object to validate
+        
+    Returns:
+        True if record has minimum required fields
+    """
+    required_fields = ["timestamp", "temperature", "humidity"]
+    return all(field in record for field in required_fields)
+
+
 def parse_log(n: int = MAX_RECORDS) -> list[dict]:
     """
     Return the last n non-empty JSON lines from log.json.
@@ -54,8 +68,10 @@ def parse_log(n: int = MAX_RECORDS) -> list[dict]:
                 # bridge.py wraps the JSON in a logging record; unwrap if needed
                 if "message" in obj and obj.get("name") == "json-log":
                     obj = json.loads(obj["message"])
-                records.append(obj)
-            except (json.JSONDecodeError, KeyError):
+                # Only include valid records
+                if is_valid_record(obj):
+                    records.append(obj)
+            except (json.JSONDecodeError, KeyError, ValueError):
                 continue
     return records[-n:]
 
