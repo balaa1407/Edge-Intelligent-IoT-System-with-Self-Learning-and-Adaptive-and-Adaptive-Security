@@ -34,8 +34,8 @@ CONFIG = {
     "mqtt": {
         "server":      "test.mosquitto.org",  # PUBLIC broker
         "port":        1883,
-        "client_id":   "edge-bridge-01",
-        "base_topic":  "edgeiot/#",
+        "client_id":   f"edge-bridge-{uuid.uuid4().hex[:8]}",  # Unique per instance
+        "base_topic":  "edgeiot/balaa1407/#",
         "keepalive":   60,
         "reconnect_delay_min": 2,
         "reconnect_delay_max": 60,
@@ -46,8 +46,8 @@ CONFIG = {
         "z_threshold":  2.0,    # standard deviations for anomaly flag
     },
     "thresholds": {
-        "temp_critical_high": 45.0,
-        "temp_high":          35.0,
+        "temp_critical_high": 45.0,  # Critical high threshold
+        "temp_high":          35.0,  # Warning temperature
         "temp_low":           10.0,
         "humi_high":          80.0,
         "humi_low":           20.0,
