@@ -95,6 +95,23 @@ def iso_to_display(ts: str | None) -> str:
         return ts
 
 
+def safe_get(obj: dict, key: str, default=None):
+    """
+    Safely get a value from a dictionary with type checking.
+    
+    Args:
+        obj: Dictionary to access
+        key: Key to retrieve
+        default: Default value if key not found
+        
+    Returns:
+        Value at key or default
+    """
+    if not isinstance(obj, dict):
+        return default
+    return obj.get(key, default)
+
+
 # ── routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
