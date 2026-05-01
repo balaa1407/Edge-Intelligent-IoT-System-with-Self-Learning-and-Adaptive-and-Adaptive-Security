@@ -113,12 +113,14 @@ def data():
     try:
         records = parse_log()
         if not records:
+            # No data available yet
             return jsonify({
                 "temperature": [], "humidity": [], "status": [],
                 "timestamps": [], "modes": [], "risks": [],
                 "latest": {}, "devices": {}, "alert": False,
             }), 200
 
+        # Prepare time-series arrays for charts
         temps, humidity, status, timestamps, modes, risks = [], [], [], [], [], []
         for d in records:
             temps.append(d.get("temperature") or 0)
@@ -128,9 +130,10 @@ def data():
             modes.append(d.get("mode", "NORMAL"))
             risks.append(d.get("risk", 0))
 
+        # Extract latest reading
         latest   = records[-1] if records else {}
         lat_risk = latest.get("risk", 0)
-        alert    = lat_risk >= 7
+        alert    = lat_risk >= 7  # Alert threshold is risk >= 7
 
         # Per-device breakdown from latest record
         device_breakdown = latest.get("devices", {})
