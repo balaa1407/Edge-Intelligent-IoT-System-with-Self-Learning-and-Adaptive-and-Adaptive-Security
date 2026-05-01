@@ -62,8 +62,9 @@ CONFIG = {
 # ── END CONFIG ────────────────────────────────────────────────────────────────
 
 # ── LOGGING SETUP ─────────────────────────────────────────────────────────────
+# Configure logging for the bridge
 logging.basicConfig(
-    level=logging.DEBUG,  # Set to DEBUG to see all messages
+    level=logging.INFO,  # Use DEBUG to see verbose messages
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -71,7 +72,6 @@ log = logging.getLogger("edge-bridge")
 
 # Plain newline-delimited JSON log for Flask (no logging wrapper)
 _log_lock = threading.Lock()
-
 
 def write_json_log(record: dict) -> None:
     """
