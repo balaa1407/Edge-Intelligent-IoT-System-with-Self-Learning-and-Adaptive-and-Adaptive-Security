@@ -293,11 +293,27 @@ def health():
     """
     Health check endpoint.
     
+    This endpoint is useful for:
+    - Monitoring systems to verify the Flask server is alive
+    - Load balancers to determine if traffic should be routed here
+    - Health dashboards to monitor infrastructure status
+    
+    Returns a simple JSON response with status and current server time.
+    
     Returns:
-        JSON object with status and current timestamp
+        JSON object with status (always "ok" if responding) and current UTC timestamp
+        Status code: 200 (OK)
     """
-    return jsonify({"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()})
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
 
 
 if __name__ == "__main__":
+    # ── FLASK SERVER STARTUP ──────────────────────────────────────────────
+    # Listen on all network interfaces (0.0.0.0) on port 5000
+    # debug=False for production (would auto-reload on file changes if True)
+    # This starts the web server serving the dashboard
+    # ──────────────────────────────────────────────────────────────────────
     app.run(host="0.0.0.0", port=5000, debug=False)
