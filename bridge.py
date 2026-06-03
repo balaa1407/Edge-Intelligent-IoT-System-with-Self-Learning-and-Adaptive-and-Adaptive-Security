@@ -122,42 +122,58 @@ class DeviceState:
     """
     Holds rolling history and last telemetry for a single device.
     
-    Tracks temperature and humidity readings and performs Z-score anomaly detection.
+    This class is used to track sensor readings over time and detect anomalies
+    by comparing new readings to historical trends. We keep a rolling window of
+    temperature and humidity values to calculate statistics for anomaly detection.
     """
 
     def __init__(self, device_id: str):
-        """Initialize device state with empty history."""
+        """
+        Initialize device state with empty history.
+        
+        Creates empty deques (circular buffers) for temperature and humidity
+        that automatically maintain a fixed max size. When a new value is added
+        and we exceed max_history, the oldest value is automatically dropped.
+        """
         self.device_id = device_id
+        # These deques act like a circular buffer - they keep the N most recent readings
         self.temp_hist = deque(maxlen=CONFIG["anomaly"]["max_history"])
         self.humi_hist = deque(maxlen=CONFIG["anomaly"]["max_history"])
-        self.last_seen = None
-        self.online    = True
-        self.latest    = {}
+        self.last_seen = None      # Track when we last received data from this device
+        self.online    = True      # Device status (online/offline)
+        self.latest    = {}        # Most recent sensor reading
 
     def update(self, payload: dict) -> None:
         """
         Update device with new telemetry reading.
         
+        When a device sends new sensor data, we:
+        1. Store it as the latest reading
+        2. Record the current timestamp (when we received it)
+        3. Add the values to our history deques for anomaly detection
+        
         Args:
             payload: Dictionary with temperature and humidity data
         """
         self.latest    = payload
-        self.last_seen = datetime.now(timezone.utc)
+        self.last_seen = datetime.now(timezone.utc)  # Mark when we last heard from device
         self.online    = True
         
         # Safely extract and validate temperature
+        # We try to convert to float, and silently skip if invalid (bad data)
         if "temperature" in payload:
             try:
                 temp_val = float(payload["temperature"])
-                self.temp_hist.append(temp_val)
+                self.temp_hist.append(temp_val)  # Add to rolling history
             except (ValueError, TypeError):
-                pass  # Skip invalid values
+                pass  # Skip invalid values - don't crash, just log nothing
                 
         # Safely extract and validate humidity
+        # Same pattern as temperature - be defensive about bad data
         if "humidity" in payload:
             try:
                 humi_val = float(payload["humidity"])
-                self.humi_hist.append(humi_val)
+                self.humi_hist.append(humi_val)  # Add to rolling history
             except (ValueError, TypeError):
                 pass  # Skip invalid values
 
@@ -166,6 +182,15 @@ class DeviceState:
     def _z_score(history: deque, value: float) -> float | None:
         """
         Calculate Z-score for anomaly detection.
+        
+        Z-score tells us how many standard deviations away from the mean a value is.
+        It's used to detect outliers: if a value is too far from normal, it's likely anomalous.
+        
+        Formula:
+            Z = |value - mean| / std_deviation
+        
+        If we don't have enough history yet (less than min_history readings), 
+        we return None to indicate we can't make a judgment yet.
         
         Args:
             history: Deque of historical values
@@ -184,20 +209,34 @@ class DeviceState:
         return abs((value - mean) / std)
 
     def is_temp_anomaly(self) -> bool:
-        """Check if current temperature is anomalous."""
+        """
+        Check if current temperature is anomalous.
+        
+        Compares the current temperature reading against the historical data.
+        If the Z-score exceeds our threshold (default 2.0), we flag it as anomalous.
+        This catches sudden spikes or drops that don't fit the normal pattern.
+        """
         z = self._z_score(self.temp_hist, self.latest.get("temperature", 0))
+        # Return True only if we have valid z-score AND it exceeds threshold
         return z is not None and z > CONFIG["anomaly"]["z_threshold"]
 
     def is_humi_anomaly(self) -> bool:
-        """Check if current humidity is anomalous."""
+        """
+        Check if current humidity is anomalous.
+        
+        Same logic as is_temp_anomaly but for humidity readings.
+        Detects unusual humidity patterns compared to historical baseline.
+        """
         z = self._z_score(self.humi_hist, self.latest.get("humidity", 0))
+        # Return True only if we have valid z-score AND it exceeds threshold
         return z is not None and z > CONFIG["anomaly"]["z_threshold"]
 
 
 # ── SHARED STATE ──────────────────────────────────────────────────────────────
-_devices: dict[str, DeviceState] = {}
-_devices_lock   = threading.Lock()
-_message_queue: queue.Queue = queue.Queue()
+# Global state shared across threads for all connected devices
+_devices: dict[str, DeviceState] = {}  # Maps device_id -> DeviceState object
+_devices_lock   = threading.Lock()     # Lock to safely access _devices from multiple threads
+_message_queue: queue.Queue = queue.Queue()  # Thread-safe queue for incoming MQTT messages
 _shutdown       = threading.Event()
 
 
