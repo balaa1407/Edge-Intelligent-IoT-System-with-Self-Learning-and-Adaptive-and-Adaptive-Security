@@ -610,15 +610,29 @@ def run() -> None:
     """
     Main entry point for the Edge IoT MQTT bridge.
     
-    Initializes MQTT connection, starts processing loop, and gracefully
-    handles shutdown signals.
+    This is where the bridge application starts. It:
+    1. Initializes the MQTT client
+    2. Connects to the MQTT broker (with retry logic)
+    3. Sets up signal handlers for graceful shutdown
+    4. Runs the main event loop (process messages, aggregate, log)
+    5. Cleans up on shutdown (disconnect MQTT, flush logs)
+    
+    The flow:
+    - MQTT network thread runs in background (client.loop_start())
+    - Main thread processes messages and aggregates data every 0.2s
+    - Ctrl+C or kill signal triggers graceful shutdown
     """
     log.info("🚀 Edge IoT bridge starting…")
 
+    # Create and configure MQTT client
     client = build_mqtt_client()
     cfg    = CONFIG["mqtt"]
 
-    # Try initial connection with retries
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 1: Connect to MQTT broker with exponential backoff retry
+    # ────────────────────────────────────────────────────────────────────────
+    # If broker is temporarily unavailable, we retry with increasing delays
+    # Delays: 2s, 4s, 8s, 16s before finally giving up
     max_retries = 5
     for attempt in range(1, max_retries + 1):
         try:
@@ -629,37 +643,71 @@ def run() -> None:
         except OSError as e:
             log.warning(f"⚠ Connection attempt {attempt} failed: {e}")
             if attempt < max_retries:
-                time.sleep(2 ** attempt)  # exponential backoff: 2s, 4s, 8s, 16s
+                # Exponential backoff: wait longer each attempt
+                # 2^1=2s, 2^2=4s, 2^3=8s, 2^4=16s
+                time.sleep(2 ** attempt)
             else:
                 log.error(f"✗ Failed to connect after {max_retries} attempts")
                 raise
 
+    # Start the MQTT network thread (runs in background)
+    # This thread handles all MQTT communication and invokes our callbacks
     client.loop_start()
 
-    # Setup signal handlers for graceful shutdown
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 2: Register signal handlers for graceful shutdown
+    # ────────────────────────────────────────────────────────────────────────
+    # When user presses Ctrl+C or process receives kill signal,
+    # we set _shutdown event which breaks the main loop
     def _handle_signal(sig, frame):
-        """Handle shutdown signals."""
+        """Handle shutdown signals gracefully."""
         sig_name = signal.Signals(sig).name
         log.info(f"🛑 Received {sig_name} signal — shutting down gracefully…")
+        # Signal the main loop to exit
         _shutdown.set()
 
-    signal.signal(signal.SIGINT,  _handle_signal)   # Ctrl+C
-    signal.signal(signal.SIGTERM, _handle_signal)   # kill signal
+    signal.signal(signal.SIGINT,  _handle_signal)   # Ctrl+C in terminal
+    signal.signal(signal.SIGTERM, _handle_signal)   # 'kill' command from OS
 
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 3: Main event loop - runs until shutdown signal received
+    # ────────────────────────────────────────────────────────────────────────
+    # This loop:
+    # 1. Processes all MQTT messages queued since last iteration
+    # 2. Aggregates data from all devices and writes to log.json
+    # 3. Sleeps for a short interval (0.2s) before repeating
+    # 
+    # The MQTT network thread runs concurrently in background,
+    # continuously receiving messages and queueing them for us.
+    # ────────────────────────────────────────────────────────────────────────
     interval = CONFIG["log"]["interval"]
     log.info(f"✓ Loop started — updating every {interval}s\n")
 
     try:
+        # Main loop - run until we receive a shutdown signal (Ctrl+C or kill)
         while not _shutdown.is_set():
+            # Process all MQTT messages that arrived since last iteration
             process_messages()
+            # Aggregate data and write to log file
             aggregate_and_log()
+            # Sleep before next iteration
             time.sleep(interval)
     finally:
+        # ────────────────────────────────────────────────────────────────────
+        # STEP 4: Graceful shutdown cleanup
+        # The finally block ensures cleanup happens even if exception occurs
+        # ────────────────────────────────────────────────────────────────────
         log.info("🛑 Stopping MQTT loop…")
-        client.loop_stop()
-        client.disconnect()
+        client.loop_stop()      # Stop the background network thread
+        client.disconnect()     # Disconnect from broker cleanly
         log.info("Bridge stopped.")
 
 
 if __name__ == "__main__":
+    # ── MAIN ENTRY POINT ──────────────────────────────────────────────────
+    # This script is meant to be run directly:
+    #   python bridge.py
+    # It starts the MQTT bridge server that connects to the broker,
+    # receives sensor data, performs anomaly detection, and logs results.
+    # ──────────────────────────────────────────────────────────────────────
     run()
