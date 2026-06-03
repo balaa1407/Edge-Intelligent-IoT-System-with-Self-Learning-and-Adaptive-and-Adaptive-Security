@@ -1,6 +1,16 @@
 """
 Edge IoT — Flask Dashboard Server
-Reads log.json written by bridge.py and serves the real-time dashboard.
+
+This Flask web server serves the real-time IoT monitoring dashboard.
+It reads the log.json file written by bridge.py and provides JSON data
+endpoints for the web frontend to render charts and statistics.
+
+Architecture:
+- /         → Serve index.html (the dashboard UI)
+- /data     → JSON endpoint with latest sensor data, time-series arrays, alerts
+- /health   → Simple health check endpoint (for monitoring)
+
+The dashboard updates every 3 seconds by polling /data endpoint.
 """
 
 from flask import Flask, render_template, jsonify
@@ -12,34 +22,44 @@ from datetime import datetime, timezone
 app = Flask(__name__)
 
 # Configuration constants
-LOG_FILE = "log.json"
-MAX_RECORDS = 20
+LOG_FILE = "log.json"         # File where bridge.py writes sensor data
+MAX_RECORDS = 20              # Number of historical records to serve to dashboard
 
 # ── cache control ─────────────────────────────────────────────────────────────
+# IMPORTANT: We disable browser caching so the dashboard always fetches fresh data
 
 @app.after_request
 def add_no_cache_headers(response):
     """
     Disable caching for all responses.
     
-    Ensures dashboard always shows latest data from log.json.
+    This is crucial for real-time dashboards. If the browser caches responses,
+    the user won't see new data - they'll see stale cached data.
+    
+    By disabling caching, we force the browser to always fetch fresh data
+    from the server.
     """
+    # Tell browser, proxies, and CDNs not to cache
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+    response.headers["Pragma"] = "no-cache"  # For HTTP/1.0 compatibility
+    response.headers["Expires"] = "0"        # For very old clients
     return response
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+# Utility functions for log file parsing and data validation
 
 def is_valid_record(record: dict) -> bool:
     """
     Validate that a record has required fields.
     
+    We only display records that have all required sensor fields.
+    Records without these fields are incomplete and shouldn't be shown.
+    
     Args:
         record: JSON object to validate
         
     Returns:
-        True if record has minimum required fields
+        True if record has ALL minimum required fields, False otherwise
     """
     required_fields = ["timestamp", "temperature", "humidity"]
     return all(field in record for field in required_fields)
@@ -49,30 +69,52 @@ def parse_log(n: int = MAX_RECORDS) -> list[dict]:
     """
     Return the last n non-empty JSON lines from log.json.
     
+    This function reads the log file line-by-line and parses newline-delimited JSON.
+    It's robust to:
+    - Missing or empty lines
+    - Malformed JSON (skips those lines)
+    - Wrapped logging records (unwraps them)
+    
+    We return only the LAST n records because:
+    1. The dashboard only shows recent history (not all historical data)
+    2. The log file can grow large, so we limit memory usage
+    
     Args:
-        n: Number of records to return
+        n: Number of records to return (default 20)
         
     Returns:
-        List of parsed JSON objects from the log file
+        List of parsed JSON objects from the log file (last n records)
+        Returns empty list if log file doesn't exist
     """
+    # If log file doesn't exist yet, return empty (no data)
     if not os.path.exists(LOG_FILE):
         return []
+    
     records = []
+    # Read log file line-by-line (streaming approach, memory efficient)
     with open(LOG_FILE, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
+            # Skip empty lines
             if not line:
                 continue
             try:
                 obj = json.loads(line)
-                # bridge.py wraps the JSON in a logging record; unwrap if needed
+                # bridge.py may wrap JSON in a logging record format
+                # If we detect that format, unwrap it to get the actual data
                 if "message" in obj and obj.get("name") == "json-log":
+                    # Extract the actual JSON from the logging wrapper
                     obj = json.loads(obj["message"])
-                # Only include valid records
+                # Only include valid records (have required fields)
                 if is_valid_record(obj):
                     records.append(obj)
             except (json.JSONDecodeError, KeyError, ValueError):
+                # Malformed line - skip it and continue
+                # This makes the system resilient to corruption
                 continue
+    
+    # Return ONLY the last n records
+    # This keeps memory usage bounded and returns fresh data
     return records[-n:]
 
 
@@ -80,14 +122,19 @@ def iso_to_display(ts: str | None) -> str:
     """
     Convert ISO timestamp string to display format.
     
+    Converts from ISO format (e.g., "2024-01-15T10:30:45+00:00")
+    to user-friendly time display (e.g., "10:30:45")
+    
+    This is used in the dashboard to show readable timestamps.
+    
     Args:
         ts: ISO format timestamp string or None
         
     Returns:
-        Formatted time string or "--" if invalid
+        Formatted time string (e.g., "14:23:15") or "--" if invalid
     """
     if not ts:
-        return "--"
+        return "--"  # Missing data
     try:
         dt = datetime.fromisoformat(ts)
         return dt.astimezone().strftime("%H:%M:%S")
