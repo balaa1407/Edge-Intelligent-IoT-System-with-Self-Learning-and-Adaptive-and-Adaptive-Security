@@ -1,4 +1,4 @@
-# Edge IoT Dashboard — Full Stack Project
+# Edge IoT Dashboard — IOT Project
 
 A complete edge IoT monitoring system: ESP32 sensor firmware → MQTT broker → Python bridge → Flask dashboard.
 
