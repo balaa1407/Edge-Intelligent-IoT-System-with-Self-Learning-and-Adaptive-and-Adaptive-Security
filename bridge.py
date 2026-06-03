@@ -245,56 +245,89 @@ def score_risk(device: DeviceState) -> dict:
     """
     Calculate risk score for a device based on multiple factors.
     
+    This function implements a multi-factor risk scoring system that evaluates device
+    health based on temperature, humidity, anomaly detection, and device status.
+    
     Risk scoring rules:
-    - Critical high or low temperature: +5
-    - High temperature: +2
-    - Humidity out of bounds: +2
-    - Device status warning: +2
-    - Temperature anomaly: +2
-    - Humidity anomaly: +1
+    - Critical high or low temperature: +5  (immediate danger)
+    - High temperature: +2                  (warning level)
+    - Humidity out of bounds: +2            (comfort/safety issue)
+    - Device status warning: +2             (device-reported issue)
+    - Temperature anomaly: +2                (unusual pattern detected)
+    - Humidity anomaly: +1                  (less critical anomaly)
+    
+    Final score is capped at 10 (max risk).
     
     Args:
         device: DeviceState instance to score
         
     Returns:
-        Dictionary with score (0-10), mode (NORMAL/WARNING/CRITICAL), and status
+        Dictionary with:
+        - score: 0-10 risk level
+        - mode: "NORMAL" (0-3), "WARNING" (4-6), or "CRITICAL" (7-10)
+        - status: Human-readable status ("Normal" or "Anomaly")
     """
+    # Shorthand aliases for cleaner code
     t          = CONFIG["thresholds"]
     data       = device.latest
     temp       = data.get("temperature", 0)
     humi       = data.get("humidity",    0)
-    dev_status = data.get("status", "OK").upper()
+    dev_status = data.get("status", "OK").upper()  # Normalize to uppercase
 
     score = 0
 
-    # Temperature scoring
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 1: Temperature-based scoring
+    # We check both critical extremes and high warning level
+    # ────────────────────────────────────────────────────────────────────────
     if temp >= t["temp_critical_high"] or temp <= t["temp_low"]:
+        # Temperature is dangerously high OR dangerously low
         score += 5
     elif temp >= t["temp_high"]:
+        # Temperature is elevated but not critical
         score += 2
 
-    # Humidity scoring
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 2: Humidity-based scoring
+    # Out of optimal range affects comfort and equipment lifespan
+    # ────────────────────────────────────────────────────────────────────────
     if humi >= t["humi_high"] or humi <= t["humi_low"]:
+        # Humidity is too high (mold risk) OR too low (drying/electrostatic)
         score += 2
 
-    # Device status scoring
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 3: Device-reported status
+    # The device itself may flag issues
+    # ────────────────────────────────────────────────────────────────────────
     if dev_status == "WARNING":
+        # Device firmware reported a warning condition
         score += 2
 
-    # Anomaly scoring
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 4: Anomaly detection scoring
+    # Flags unusual patterns that don't fit historical trends
+    # ────────────────────────────────────────────────────────────────────────
     if device.is_temp_anomaly():
+        # Temperature spike/drop detected that doesn't match trend
         score += 2
     if device.is_humi_anomaly():
+        # Humidity anomaly detected (less critical than temp)
         score += 1
 
+    # Cap the score at 10 (max risk level)
     score = min(score, 10)
 
-    # Determine mode and status based on score
+    # ────────────────────────────────────────────────────────────────────────
+    # STEP 5: Convert numerical score to operational mode and status
+    # ────────────────────────────────────────────────────────────────────────
     if score >= 7:
+        # High risk - immediate attention needed
         mode, status = "CRITICAL", "Anomaly"
     elif score >= 4:
+        # Moderate risk - monitor and prepare response
         mode, status = "WARNING",  "Anomaly"
     else:
+        # All good - normal operation
         mode, status = "NORMAL",   "Normal"
 
     return {"score": score, "mode": mode, "status": status}
