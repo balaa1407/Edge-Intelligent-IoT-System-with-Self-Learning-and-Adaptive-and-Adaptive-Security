@@ -338,8 +338,17 @@ def on_connect(client, userdata, connect_flags, reason_code, properties):
     """
     MQTT on_connect callback handler.
     
-    Logs connection status and subscribes to topics.
+    This function is called by the MQTT client library whenever the connection
+    to the broker succeeds or fails. We use it to:
+    1. Check if connection was successful
+    2. Subscribe to the topics we care about (device telemetry)
+    3. Log appropriate messages for debugging
+    
+    The reason_code parameter tells us what happened:
+    - 0 = Success, we're connected!
+    - 1-5 = Various failure reasons
     """
+    # Map numeric reason codes to human-readable descriptions
     rc_map = {
         0: "OK",
         1: "Bad protocol",
@@ -349,10 +358,14 @@ def on_connect(client, userdata, connect_flags, reason_code, properties):
         5: "Not authorised"
     }
     if reason_code == 0:
+        # ✓ Connection successful - now subscribe to device topics
         log.info(f"✓ MQTT connected → {CONFIG['mqtt']['server']}")
+        # Subscribe to the base topic (e.g., "edgeiot/balaa1407/#")
+        # The # wildcard means "all subtopics" (telemetry, status, etc)
         client.subscribe(CONFIG["mqtt"]["base_topic"])
         log.info(f"✓ Subscribed: {CONFIG['mqtt']['base_topic']}")
     else:
+        # ✗ Connection failed - show user-friendly error message
         reason_text = rc_map.get(reason_code, f"Unknown ({reason_code})")
         log.error(f"✗ MQTT connect failed [{reason_code}]: {reason_text}")
 
@@ -361,11 +374,18 @@ def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     """
     MQTT on_disconnect callback handler.
     
-    Logs disconnection events.
+    Called whenever the connection to the broker is lost (intentional or crash).
+    We log it for debugging, and the paho-mqtt library automatically handles
+    reconnection attempts based on our reconnect_delay_set() configuration.
+    
+    Note: reason_code 0 means WE intentionally disconnected (clean shutdown)
+    Non-zero means the broker kicked us off, so we'll auto-reconnect.
     """
     if reason_code != 0:
+        # Unexpected disconnect - will auto-reconnect
         log.warning(f"⚠ MQTT disconnected (rc={reason_code}) - will attempt to reconnect automatically")
     else:
+        # Clean intentional disconnect (e.g., during shutdown)
         log.info(f"MQTT disconnected cleanly")
 
 
@@ -373,29 +393,49 @@ def on_message(client, userdata, msg):
     """
     MQTT on_message callback handler.
     
-    Decodes payload and queues for processing.
+    Called by the paho-mqtt library whenever a message arrives on a subscribed topic.
+    We deserialize the JSON payload and queue it for processing.
+    
+    Why queue the messages?
+    - The callback runs in the MQTT client's network thread
+    - We don't want to block the network thread with heavy processing
+    - Queuing allows us to process messages at our own pace on the main thread
+    
+    We're defensive about bad data:
+    - Catch encoding errors (not UTF-8)
+    - Catch JSON parse errors (malformed JSON)
+    - Skip invalid messages without crashing
     """
     try:
+        # Decode binary payload to UTF-8 string
         raw     = msg.payload.decode("utf-8")
+        # Parse JSON string to Python dict
         payload = json.loads(raw)
     except UnicodeDecodeError as e:
+        # Payload wasn't valid UTF-8 text
         log.warning(f"Bad payload encoding on {msg.topic}: {e}")
         return
     except json.JSONDecodeError as e:
+        # Payload was text but not valid JSON
         log.warning(f"Bad JSON on {msg.topic}: {e}")
         return
     except Exception as e:
+        # Some other unexpected error
         log.error(f"Unexpected error parsing message on {msg.topic}: {e}")
         return
     
-    # Debug: Log every message received
+    # All good - queue this for processing by main thread
     log.debug(f"📨 Message received on {msg.topic}")
+    # Put (topic, parsed_json) tuple into the queue
     _message_queue.put((msg.topic, payload))
 
 
 def build_mqtt_client() -> mqtt.Client:
     """
     Create and configure MQTT client instance.
+    
+    This factory function creates and configures a fresh MQTT client with all
+    our callbacks attached and reconnection settings configured.
     
     Returns:
         Configured mqtt.Client object ready for connection
