@@ -457,37 +457,63 @@ def process_messages() -> None:
     """
     Process all messages in the queue.
     
-    Handles device registration, status updates, and telemetry processing.
+    This is the main message processor that runs on the main thread.
+    It drains the message queue (which is filled by MQTT callbacks) and:
+    1. Parses MQTT topic structure to extract device_id and subtopic
+    2. Auto-registers new devices (DeviceState instance)
+    3. Handles different message types (telemetry vs status)
+    4. Updates device state and calculates risk scores
+    
+    Topic format: edgeiot/{device_id}/{subtopic}
+    Example: edgeiot/balaa1407/telemetry
     """
     message_count = 0
+    # Drain the queue - process ALL messages that have accumulated
     while not _message_queue.empty():
         try:
             topic, payload = _message_queue.get_nowait()
         except queue.Empty:
+            # Queue is now empty
             break
 
         message_count += 1
-        # Parse MQTT topic structure: edgeiot/device_id/subtopic
+        
+        # ────────────────────────────────────────────────────────────────────
+        # STEP 1: Parse the MQTT topic to get device_id and subtopic
+        # Topic format: "edgeiot/balaa1407/telemetry"
+        # ────────────────────────────────────────────────────────────────────
         parts     = topic.split("/")
         device_id = parts[1] if len(parts) >= 2 else "unknown"
         subtopic  = parts[2] if len(parts) >= 3 else ""
 
+        # ────────────────────────────────────────────────────────────────────
+        # STEP 2: Get or create DeviceState for this device
+        # We use a lock to ensure thread-safe access to the _devices dict
+        # ────────────────────────────────────────────────────────────────────
         with _devices_lock:
             if device_id not in _devices:
+                # First time seeing this device - create state for it
                 _devices[device_id] = DeviceState(device_id)
                 log.info(f"✓ New device: {device_id}")
             device = _devices[device_id]
 
-        # Handle offline status (Last Will and Testament)
+        # ────────────────────────────────────────────────────────────────────
+        # STEP 3: Handle different message types
+        # ────────────────────────────────────────────────────────────────────
+        
+        # Last Will and Testament (LWT) - device went offline
         if subtopic == "status" and payload.get("status") == "OFFLINE":
             log.warning(f"[{device_id}] OFFLINE (LWT)")
-            device.online = False
+            device.online = False  # Mark device as offline
             continue
 
-        # Handle telemetry updates
+        # Telemetry data - actual sensor readings
         if subtopic == "telemetry":
+            # Update device with new sensor readings
             device.update(payload)
+            # Calculate risk score based on new data
             risk = score_risk(device)
+            # Log the received data with emoji for visual scanning
             log.info(
                 f"[{device_id}] "
                 f"🌡️ {payload.get('temperature')}°C | "
@@ -495,6 +521,7 @@ def process_messages() -> None:
                 f"⚠️  risk={risk['score']}/10"
             )
     
+    # Log summary if we processed anything
     if message_count > 0:
         log.debug(f"📦 Processed {message_count} message(s) from queue")
 
@@ -504,8 +531,17 @@ def aggregate_and_log() -> None:
     """
     Aggregate data from all online devices and write to log file.
     
-    Calculates averages, overall risk score, and writes structured JSON record.
+    This function is called periodically (every 0.2s) to:
+    1. Collect all online devices that have sent telemetry
+    2. Calculate system-wide averages (avg temperature, humidity)
+    3. Determine overall system risk (highest risk device determines system risk)
+    4. Write a structured JSON record to log.json for the Flask dashboard
+    
+    The log file format is newline-delimited JSON (one record per line)
+    which is easy to parse and stream.
     """
+    # Take a snapshot of all online devices with data
+    # We use a lock to safely read the _devices dict
     with _devices_lock:
         snapshot = {k: v for k, v in _devices.items() if v.online and v.latest}
 
