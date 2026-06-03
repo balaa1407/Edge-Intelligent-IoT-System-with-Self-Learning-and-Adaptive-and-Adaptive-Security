@@ -25,6 +25,9 @@ import signal
 import logging
 import logging.handlers
 import threading
+import uuid
+import shutil
+import os
 from datetime import datetime, timezone
 from collections import deque
 import paho.mqtt.client as mqtt
@@ -113,8 +116,6 @@ def _rotate_log(path: str, backups: int) -> None:
     if os.path.exists(path):
         shutil.move(path, f"{path}.1")
 
-
-import os  # needed for write_json_log
 
 # ── DEVICE STATE ──────────────────────────────────────────────────────────────
 class DeviceState:
